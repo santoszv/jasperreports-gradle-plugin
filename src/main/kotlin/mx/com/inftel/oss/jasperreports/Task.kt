@@ -1,85 +1,120 @@
-//    Jasper Reports Gradle Plugin
-//    Copyright 2019 Santos Zatarain Vera
-//
-//    Licensed under the Apache License, Version 2.0 (the "License");
-//    you may not use this file except in compliance with the License.
-//    You may obtain a copy of the License at
-//
-//        http://www.apache.org/licenses/LICENSE-2.0
-//
-//    Unless required by applicable law or agreed to in writing, software
-//    distributed under the License is distributed on an "AS IS" BASIS,
-//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-//    See the License for the specific language governing permissions and
-//    limitations under the License.
+/*
+ Jasper Reports Gradle Plugin
+ Copyright 2019 Santos Zatarain Vera
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
 
 package mx.com.inftel.oss.jasperreports
 
 import org.gradle.api.DefaultTask
 import org.gradle.api.Project
-import org.gradle.api.artifacts.Configuration
-import org.gradle.api.tasks.Internal
-import org.gradle.api.tasks.SourceSetContainer
-import org.gradle.api.tasks.TaskAction
-import java.net.URL
+import org.gradle.api.tasks.*
+import org.gradle.api.tasks.incremental.IncrementalTaskInputs
+import java.io.File
+import java.lang.UnsupportedOperationException
 import java.net.URLClassLoader
 import kotlin.reflect.full.primaryConstructor
 
 const val JASPER_REPORTS_TASK_GROUP = "jasperreports"
-const val JASPER_REPORTS_TASK_PREFIX = "jasperreports"
+const val JASPER_REPORTS_TASK_NAME = "compileJasperReports"
 
-fun Project.setupJasperReportsTask(configurationName: String, extensionName: String, taskGroup: String, taskPrefix: String) {
-    val command = "compileReports"
-    val task = tasks.create(
-            if (taskPrefix.isBlank()) command.decapitalize() else "$taskPrefix${command.capitalize()}",
-            JasperReportsTask::class.java
-    )
-    task.configurationName = configurationName
-    task.description = "Compile reports."
-    task.extensionName = extensionName
+fun Project.setupJasperReportsTask(taskGroup: String, taskName: String): JasperReportsTask {
+    val task = tasks.create(taskName, JasperReportsTask::class.java)
     task.group = taskGroup
+    task.description = "Compile $taskName reports"
+    return task
 }
-
 
 open class JasperReportsTask : DefaultTask() {
 
-    @get:Internal
-    lateinit var configurationName: String
-    @get:Internal
-    lateinit var extensionName: String
+    @Classpath
+    @InputFiles
+    lateinit var classpath: MutableSet<File>
+    @InputDirectory
+    lateinit var inputDirectory: File
+    @OutputDirectory
+    lateinit var outputDirectory: File
 
-    @get:Internal
-    val configuration: Configuration by lazy {
-        project.configurations.getByName(configurationName)
-    }
-    @get:Internal
-    val extension: JasperReportsExtension by lazy {
-        project.extensions.getByName(extensionName) as JasperReportsExtension
-    }
-
+    @Suppress("unused")
     @TaskAction
-    fun run() {
-        val urls = mutableListOf<URL>()
-        val convention = project.convention
-        val sourceSets = convention.findByType(SourceSetContainer::class.java)
-                ?: convention.findPlugin(SourceSetContainer::class.java)
-                ?: convention.getByType(SourceSetContainer::class.java)
-                ?: throw UnsupportedOperationException()
-        sourceSets.getByName(extension.sourceSet).output.files.forEach {
-            val url = it.toURI().toURL()
-            urls.add(url)
+    fun run(inputs: IncrementalTaskInputs) {
+
+        var compileAllReports = false
+        if (!inputs.isIncremental) {
+            compileAllReports = true
+            outputDirectory.deleteRecursively()
         }
-        configuration.files.forEach {
-            val url = it.toURI().toURL()
-            urls.add(url)
+
+        val outOfDateReports = mutableSetOf<File>()
+        inputs.outOfDate { detail ->
+            when {
+                detail.file.name.endsWith(".jar", true) -> compileAllReports = compileAllReports || true
+                detail.file.name.endsWith(".class", true) -> compileAllReports = compileAllReports || true
+                else -> outOfDateReports.add(detail.file)
+            }
         }
+
+        val removedReports = mutableSetOf<File>()
+        inputs.removed { detail ->
+            when {
+                detail.file.name.endsWith(".jar", true) -> compileAllReports = compileAllReports || true
+                detail.file.name.endsWith(".class", true) -> compileAllReports = compileAllReports || true
+                else -> removedReports.add(detail.file)
+            }
+        }
+
+        removedReports.forEach { report ->
+            if (report.startsWith(inputDirectory)) {
+                if ("jrxml".equals(report.extension, true)) {
+                    val relative = report.toRelativeString(inputDirectory)
+                    val tmp = File(outputDirectory, relative)
+                    val target = File(tmp.parentFile, "${tmp.nameWithoutExtension}.jasper")
+                    if (target.exists()) {
+                        target.delete()
+                    }
+                    println("Removed $relative")
+                }
+            }
+        }
+
+        if (compileAllReports) {
+            inputDirectory.walk().forEach { file ->
+                outOfDateReports.add(file)
+            }
+        }
+
         val originalClassLoader = Thread.currentThread().contextClassLoader
-        URLClassLoader(urls.toTypedArray(), originalClassLoader).use {
-            Thread.currentThread().contextClassLoader = it
+        URLClassLoader(classpath.map { it.toURI().toURL() }.toTypedArray(), originalClassLoader).use { loader ->
+            Thread.currentThread().contextClassLoader = loader
             try {
-                val kClass = it.loadClass("mx.com.inftel.oss.jasperreports.helper.JasperReportsHelper").kotlin
-                val kInstance = kClass.primaryConstructor!!.call(this) as Runnable
-                kInstance.run()
+                val kClass = loader.loadClass("mx.com.inftel.oss.jasperreports.helper.JasperReportsHelper").kotlin
+                outOfDateReports.forEach { report ->
+                    if (report.startsWith(inputDirectory)) {
+                        if ("jrxml".equals(report.extension, true)) {
+                            val relative = report.toRelativeString(inputDirectory)
+                            val tmp = File(outputDirectory, relative)
+                            val target = File(tmp.parentFile, "${tmp.nameWithoutExtension}.jasper")
+                            val kInstance = kClass.primaryConstructor!!.call(report, target) as Runnable
+                            kInstance.run()
+                            println("Compiled $relative")
+                        }
+                    }
+                }
+            } catch (e: NoClassDefFoundError) {
+                throw UnsupportedOperationException("Some required runtime class was not found", e)
+            } catch (e: ClassNotFoundException) {
+                throw UnsupportedOperationException("Some required runtime class was not found", e)
             } finally {
                 Thread.currentThread().contextClassLoader = originalClassLoader
             }

@@ -26,13 +26,13 @@ import java.lang.UnsupportedOperationException
 import java.net.URLClassLoader
 import kotlin.reflect.full.primaryConstructor
 
-const val JASPER_REPORTS_TASK_GROUP = "jasperreports"
+const val JASPER_REPORTS_TASK_GROUP = "jasper reports"
 const val JASPER_REPORTS_TASK_NAME = "compileJasperReports"
 
 fun Project.setupJasperReportsTask(taskGroup: String, taskName: String): JasperReportsTask {
     val task = tasks.create(taskName, JasperReportsTask::class.java)
     task.group = taskGroup
-    task.description = "Compile $taskName reports"
+    task.description = "Compile Jasper Reports"
     return task
 }
 
@@ -83,7 +83,7 @@ open class JasperReportsTask : DefaultTask() {
                     if (target.exists()) {
                         target.delete()
                     }
-                    println("Removed $relative")
+                    //println("Removed $relative")
                 }
             }
         }
@@ -107,7 +107,7 @@ open class JasperReportsTask : DefaultTask() {
                             val target = File(tmp.parentFile, "${tmp.nameWithoutExtension}.jasper")
                             val kInstance = kClass.primaryConstructor!!.call(report, target) as Runnable
                             kInstance.run()
-                            println("Compiled $relative")
+                            //println("Compiled $relative")
                         }
                     }
                 }

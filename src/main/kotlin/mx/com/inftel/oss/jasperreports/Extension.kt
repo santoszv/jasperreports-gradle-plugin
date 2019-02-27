@@ -17,12 +17,17 @@
 
 package mx.com.inftel.oss.jasperreports
 
+import org.gradle.api.Action
 import org.gradle.api.Project
 
-const val JASPER_REPORTS_EXTENSION = "jasperreports"
+const val JASPER_REPORTS_EXTENSION = "jasperReportsExtension"
 
 fun Project.setupJasperReportsExtension(extensionName: String): JasperReportsExtension =
         extensions.create(extensionName, JasperReportsExtension::class.java)
+
+@Suppress("unused")
+fun Project.jasperReports(configuration: Action<JasperReportsExtension>) =
+        configuration.execute(extensions.getByName(JASPER_REPORTS_EXTENSION) as JasperReportsExtension)
 
 open class JasperReportsExtension {
 

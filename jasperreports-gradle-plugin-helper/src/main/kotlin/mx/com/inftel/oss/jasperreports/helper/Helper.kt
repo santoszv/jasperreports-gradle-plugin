@@ -21,6 +21,7 @@ import net.sf.jasperreports.engine.JRException
 import net.sf.jasperreports.engine.JasperCompileManager
 import java.io.File
 
+@Suppress("unused")
 class JasperReportsHelper(private val input: File, private val output: File) : Runnable {
 
     override fun run() {
@@ -28,7 +29,7 @@ class JasperReportsHelper(private val input: File, private val output: File) : R
             output.parentFile.mkdirs()
             JasperCompileManager.compileReportToFile(input.path, output.path)
         } catch (e: JRException) {
-            println(input)
+            println("There were some problems while processing $input")
             throw UnsupportedOperationException(e.message)
         }
     }

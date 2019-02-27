@@ -20,7 +20,7 @@ package mx.com.inftel.oss.jasperreports
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
 
-const val JASPER_REPORTS_CONFIGURATION = "jasperreportsPluginRuntime"
+const val JASPER_REPORTS_CONFIGURATION = "jasperReportsPluginRuntime"
 
 fun Project.setupJasperReportsConfiguration(configurationName: String): Configuration =
          configurations.maybeCreate(configurationName)
